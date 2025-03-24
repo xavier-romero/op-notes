@@ -38,14 +38,15 @@ Dependencies
 
 - *op-geth* AuthRPC
 - L1 JSON-RPC + Beacon API
-- Sequencer Private Key
 - File rollup.json
+- (1) Sequencer Private Key
 
 Notes
 
 - Block time is set in the *rollup.json* file, it is NOT a config parame
 - Param ```--l2``` needs to point to *op-geth* AuthRPC port (```--authrpc.port``` option on *op-geth*)
 - Param ```--l2.jwt-secret``` points to the same file than ```--authrpc.jwtsecret``` on *op-geth*
+- (1) Sequencer Key is only required for signing P2P, if you don't set P2P you don't even need to provide this key
 
 
 ## op-batcher
@@ -56,7 +57,7 @@ Notes
 
 - Gather L2 txs from op-geth
 - Build batches of transactions
-- Submit batches to L1
+- Submit batches to L1 (destination: Batch Inbox address)
 
 Exposed API/ports:
 
@@ -69,6 +70,9 @@ Dependencies
 - L1 JSON-RPC
 - Batcher Private Key
 
+Notes
+
+- By default, it commits to L1 through data on regular txs, however you can use BLOBS by setting flag ```--data-availability-type=blobs```
 
 ## op-proposer
 
@@ -88,4 +92,4 @@ Dependencies
 - Either DisputeGameFactory or L2OutputOracle ????
 - L1 JSON-RPC
 - Proposer Private Key
-- *L2OutputOracleProxy* address
+- *L2OutputOracleProxy* or *disputeGameFactoryProxyAddress* address
