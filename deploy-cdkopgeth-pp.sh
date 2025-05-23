@@ -27,6 +27,7 @@ BRIDGE_TAG=v0.6.0-RC16
 ZKEVM_CONTRACTS_TAG=v10.0.0-rc.8
 OP_SUCCINCT_TAG_DOCKER=ghcr.io/agglayer/op-succinct/op-succinct:v2.1.8-agglayer
 AGGKITPROVER_TAG=v0.1.0-rc.28
+SUCCINCT_TAG=v2.1.6-agglayer
 
 
 # ██████╗  ██████╗     ███╗   ██╗ ██████╗ ████████╗     ██████╗██╗  ██╗ █████╗ ███╗   ██╗ ██████╗ ███████╗                   
@@ -163,6 +164,7 @@ save_var AGGLAYER_TAG $AGGLAYER_TAG
 save_var AGGKIT_TAG $AGGKIT_TAGdeploy-cdkopgeth-pp.sh
 save_var OP_SUCCINCT_TAG_DOCKER $OP_SUCCINCT_TAG_DOCKER
 save_var AGGKITPROVER_TAG $AGGKITPROVER_TAG
+save_var SUCCINCT_TAG $SUCCINCT_TAG
 
 save_var SEPOLIA_CHAINID 11155111
 
@@ -256,6 +258,7 @@ repos() {
   save_var BRIDGEDIR ${REPODIR}/bridge
   save_var POLYCLI $REPODIR/polycli
   save_var AGGKITPROVERREPODIR ${REPODIR}/aggkit-prover
+  save_var OPSUCCINCTDIR ${REPODIR}/op-succinct
 
   git clone https://github.com/agglayer/agglayer-contracts/ $ZKEVM_CONTRACTS
   git clone https://github.com/ethereum-optimism/optimism.git $OPMONOREPODIR
@@ -265,6 +268,7 @@ repos() {
   git clone https://github.com/0xPolygonHermez/zkevm-bridge-service.git $BRIDGEDIR
   git clone https://github.com/0xPolygon/polygon-cli.git $POLYCLI
   git clone https://github.com/agglayer/provers $AGGKITPROVERREPODIR
+  git clone https://github.com/agglayer/op-succinct.git $OPSUCCINCTDIR
 
 
   # compile op-node
@@ -333,6 +337,38 @@ repos() {
   docker buildx build --build-arg BUILDPLATFORM=linux/amd64 --no-cache -t aggkit-prover:local .
   docker run --detach --rm --name aggkitprover_tmp aggkit-prover:local sleep 30
   docker cp aggkitprover_tmp:/usr/local/bin/aggkit-prover $RUNDIR/aggkit-prover.${AGGKITPROVER_TAG}
+
+  # fetch-rollup-config
+  cd $OPSUCCINCTDIR
+  git checkout $SUCCINCT_TAG
+  cat > Dockerfile <<EOF
+FROM rust:slim-bookworm AS builder
+
+ARG OP_SUCCINCT_BRANCH
+WORKDIR /opt
+
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends curl \
+      build-essential ca-certificates git pkg-config \
+      libssl-dev clang libclang-dev jq 
+
+RUN curl -sL https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+
+WORKDIR /opt
+RUN git clone https://github.com/succinctlabs/sp1-contracts.git
+
+WORKDIR /opt/op-succinct
+RUN git clone https://github.com/agglayer/op-succinct.git . \
+    && git checkout \${OP_SUCCINCT_BRANCH} \
+    && git submodule update --init --recursive
+
+RUN cargo build --release \
+    && cp target/release/fetch-rollup-config /usr/local/bin/
+EOF
+  docker build --build-arg OP_SUCCINCT_BRANCH=$SUCCINCT_TAG --file Dockerfile -t op-succinct:$SUCCINCT_TAG .
+  docker run --detach --rm --name opsuccinct_tmp op-succinct:$SUCCINCT_TAG sleep 30
+  docker cp opsuccinct_tmp:/usr/local/bin/fetch-rollup-config $RUNDIR/fetch-rollup-config.$SUCCINCT_TAG
+
 }
 
 # download repos and build binaries for everything
