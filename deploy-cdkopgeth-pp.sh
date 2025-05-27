@@ -14,20 +14,19 @@ INFURA_SEPOLIA_PROVIDER=$5
 
 # GENERAL CONFIG && VERSIONS 
 WORKDIR=/home/opstack/upgrade
-NETWORKNAME=upgrademe
+NETWORKNAME=network1
 CHAINID=78901
 OP_NODE_TAG=op-node/v1.13.2
 OP_GETH_TAG=v1.101503.4
 OP_BATCHER_TAG=op-batcher/v1.12.0
 OP_PROPOSER_TAG=op-proposer/v1.10.0
 OP_DEPLOYER_TAG_DOCKER=xavierromero/op-deployer:v0.0.11-predeployed
-AGGLAYER_TAG=v0.3.0-rc.21
-AGGKIT_TAG=v0.3.0-beta6
+AGGLAYER_TAG=v0.3.0
+AGGKIT_TAG=v0.3.0
+AGGKITPROVER_TAG=v1.0.0
+OP_SUCCINCT_TAG_DOCKER=ghcr.io/agglayer/op-succinct/op-succinct:v2.2.1-agglayer
 BRIDGE_TAG=v0.6.0-RC16
-ZKEVM_CONTRACTS_TAG=v10.0.0-rc.8
-OP_SUCCINCT_TAG_DOCKER=ghcr.io/agglayer/op-succinct/op-succinct:v2.1.8-agglayer
-AGGKITPROVER_TAG=v0.1.0-rc.28
-SUCCINCT_TAG=v2.1.6-agglayer
+ZKEVM_CONTRACTS_TAG=v10.1.0-rc.6
 
 
 # ██████╗  ██████╗     ███╗   ██╗ ██████╗ ████████╗     ██████╗██╗  ██╗ █████╗ ███╗   ██╗ ██████╗ ███████╗                   
@@ -61,27 +60,30 @@ SUCCINCT_TAG=v2.1.6-agglayer
 
 
 
+# get just the tag from the docker image  
+SUCCINCT_TAG=$(echo $OP_SUCCINCT_TAG_DOCKER | cut -d: -f2)
 
 
 
 
 
 
-
-
-
-# ██████╗ ███████╗ ██████╗ ██╗   ██╗██╗██████╗ ███████╗███╗   ███╗███████╗███╗   ██╗████████╗███████╗
-# ██╔══██╗██╔════╝██╔═══██╗██║   ██║██║██╔══██╗██╔════╝████╗ ████║██╔════╝████╗  ██║╚══██╔══╝██╔════╝
-# ██████╔╝█████╗  ██║   ██║██║   ██║██║██████╔╝█████╗  ██╔████╔██║█████╗  ██╔██╗ ██║   ██║   ███████╗
-# ██╔══██╗██╔══╝  ██║▄▄ ██║██║   ██║██║██╔══██╗██╔══╝  ██║╚██╔╝██║██╔══╝  ██║╚██╗██║   ██║   ╚════██║
-# ██║  ██║███████╗╚██████╔╝╚██████╔╝██║██║  ██║███████╗██║ ╚═╝ ██║███████╗██║ ╚████║   ██║   ███████║
-# ╚═╝  ╚═╝╚══════╝ ╚══▀▀═╝  ╚═════╝ ╚═╝╚═╝  ╚═╝╚══════╝╚═╝     ╚═╝╚══════╝╚═╝  ╚═══╝   ╚═╝   ╚══════╝
+echo " ██████╗ ███████╗ ██████╗ ██╗   ██╗██╗██████╗ ███████╗███╗   ███╗███████╗███╗   ██╗████████╗███████╗"
+echo " ██╔══██╗██╔════╝██╔═══██╗██║   ██║██║██╔══██╗██╔════╝████╗ ████║██╔════╝████╗  ██║╚══██╔══╝██╔════╝"
+echo " ██████╔╝█████╗  ██║   ██║██║   ██║██║██████╔╝█████╗  ██╔████╔██║█████╗  ██╔██╗ ██║   ██║   ███████╗"
+echo " ██╔══██╗██╔══╝  ██║▄▄ ██║██║   ██║██║██╔══██╗██╔══╝  ██║╚██╔╝██║██╔══╝  ██║╚██╗██║   ██║   ╚════██║"
+echo " ██║  ██║███████╗╚██████╔╝╚██████╔╝██║██║  ██║███████╗██║ ╚═╝ ██║███████╗██║ ╚████║   ██║   ███████║"
+echo " ╚═╝  ╚═╝╚══════╝ ╚══▀▀═╝  ╚═════╝ ╚═╝╚═╝  ╚═╝╚══════╝╚═╝     ╚═╝╚══════╝╚═╝  ╚═══╝   ╚═╝   ╚══════╝"
 requirements() {
-  sudo apt-get update
-  sudo apt-get install -y jq python3 docker.io ca-certificates curl gnupg \
+  # no frontend
+
+  DEBIAN_FRONTEND=noninteractive sudo apt-get update
+  DEBIAN_FRONTEND=noninteractive sudo apt-get install -y \
+    jq python3 docker.io ca-certificates curl gnupg \
     lsb-release docker-buildx python3-pip tmux pkg-config libssl-dev
   sudo usermod -aG docker "$USER"
   orig_group=$(id -gn)
+  # THAT OPENS A NEW SHELL, so execution will be paused here...
   orig_group=$orig_group newgrp docker && newgrp $orig_group
 
   pip3 install web3
@@ -106,17 +108,23 @@ requirements() {
 
 if ! command -v go &> /dev/null
 then
+  echo "Go is not installed, installing requirements..."
   requirements
 else
   echo "Requirements OK"
 fi
 
-# ██╗   ██╗ █████╗ ██████╗ ███████╗   ███████╗██╗  ██╗
-# ██║   ██║██╔══██╗██╔══██╗██╔════╝   ██╔════╝██║  ██║
-# ██║   ██║███████║██████╔╝███████╗   ███████╗███████║
-# ╚██╗ ██╔╝██╔══██║██╔══██╗╚════██║   ╚════██║██╔══██║
-#  ╚████╔╝ ██║  ██║██║  ██║███████║██╗███████║██║  ██║
-#   ╚═══╝  ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚═╝╚══════╝╚═╝  ╚═╝
+rm -fr $WORKDIR/vars.sh
+rm -fr $WORKDIR/data
+rm -fr $WORKDIR/scripts
+
+
+echo " ██╗   ██╗ █████╗ ██████╗ ███████╗   ███████╗██╗  ██╗"
+echo " ██║   ██║██╔══██╗██╔══██╗██╔════╝   ██╔════╝██║  ██║"
+echo " ██║   ██║███████║██████╔╝███████╗   ███████╗███████║"
+echo " ╚██╗ ██╔╝██╔══██║██╔══██╗╚════██║   ╚════██║██╔══██║"
+echo "  ╚████╔╝ ██║  ██║██║  ██║███████║██╗███████║██║  ██║"
+echo "   ╚═══╝  ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝╚═╝╚══════╝╚═╝  ╚═╝"
 # Everything will be stored on vars.sh from now
 mkdir -p $WORKDIR && cd $WORKDIR
 CONTEXT_FILE=${WORKDIR}/vars.sh
@@ -161,7 +169,7 @@ save_var OP_PROPOSER_TAG $OP_PROPOSER_TAG
 save_var OP_DEPLOYER_TAG_DOCKER $OP_DEPLOYER_TAG_DOCKER
 
 save_var AGGLAYER_TAG $AGGLAYER_TAG
-save_var AGGKIT_TAG $AGGKIT_TAGdeploy-cdkopgeth-pp.sh
+save_var AGGKIT_TAG $AGGKIT_TAG
 save_var OP_SUCCINCT_TAG_DOCKER $OP_SUCCINCT_TAG_DOCKER
 save_var AGGKITPROVER_TAG $AGGKITPROVER_TAG
 save_var SUCCINCT_TAG $SUCCINCT_TAG
@@ -177,12 +185,12 @@ mkdir -p $REPODIR $RUNDIR $DATA $SCRIPTDIR
 cd $WORKDIR
 
 
-#  ██████╗██████╗ ███████╗ █████╗ ████████╗███████╗    ██╗    ██╗ █████╗ ██╗     ██╗     ███████╗████████╗███████╗
-# ██╔════╝██╔══██╗██╔════╝██╔══██╗╚══██╔══╝██╔════╝    ██║    ██║██╔══██╗██║     ██║     ██╔════╝╚══██╔══╝██╔════╝
-# ██║     ██████╔╝█████╗  ███████║   ██║   █████╗      ██║ █╗ ██║███████║██║     ██║     █████╗     ██║   ███████╗
-# ██║     ██╔══██╗██╔══╝  ██╔══██║   ██║   ██╔══╝      ██║███╗██║██╔══██║██║     ██║     ██╔══╝     ██║   ╚════██║
-# ╚██████╗██║  ██║███████╗██║  ██║   ██║   ███████╗    ╚███╔███╔╝██║  ██║███████╗███████╗███████╗   ██║   ███████║
-#  ╚═════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝   ╚═╝   ╚══════╝     ╚══╝╚══╝ ╚═╝  ╚═╝╚══════╝╚══════╝╚══════╝   ╚═╝   ╚══════╝
+echo "  ██████╗██████╗ ███████╗ █████╗ ████████╗███████╗    ██╗    ██╗ █████╗ ██╗     ██╗     ███████╗████████╗███████╗"
+echo " ██╔════╝██╔══██╗██╔════╝██╔══██╗╚══██╔══╝██╔════╝    ██║    ██║██╔══██╗██║     ██║     ██╔════╝╚══██╔══╝██╔════╝"
+echo " ██║     ██████╔╝█████╗  ███████║   ██║   █████╗      ██║ █╗ ██║███████║██║     ██║     █████╗     ██║   ███████╗"
+echo " ██║     ██╔══██╗██╔══╝  ██╔══██║   ██║   ██╔══╝      ██║███╗██║██╔══██║██║     ██║     ██╔══╝     ██║   ╚════██║"
+echo " ╚██████╗██║  ██║███████╗██║  ██║   ██║   ███████╗    ╚███╔███╔╝██║  ██║███████╗███████╗███████╗   ██║   ███████║"
+echo "  ╚═════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝   ╚═╝   ╚══════╝     ╚══╝╚══╝ ╚═╝  ╚═╝╚══════╝╚══════╝╚══════╝   ╚═╝   ╚══════╝"
 > ${SCRIPTDIR}/wallets.py cat <<EOF
 import json
 from eth_account import Account
@@ -232,19 +240,19 @@ save_var CLAIMTX $(jq -r .claimtx.address $DATA/wallets.json)
 save_var CLAIMTX_KEY $(jq -r .claimtx.key $DATA/wallets.json)
 
 
-# ███████╗███████╗████████╗██╗   ██╗██████╗     ██████╗ ███████╗██████╗  ██████╗ ███████╗
-# ██╔════╝██╔════╝╚══██╔══╝██║   ██║██╔══██╗    ██╔══██╗██╔════╝██╔══██╗██╔═══██╗██╔════╝
-# ███████╗█████╗     ██║   ██║   ██║██████╔╝    ██████╔╝█████╗  ██████╔╝██║   ██║███████╗
-# ╚════██║██╔══╝     ██║   ██║   ██║██╔═══╝     ██╔══██╗██╔══╝  ██╔═══╝ ██║   ██║╚════██║
-# ███████║███████╗   ██║   ╚██████╔╝██║         ██║  ██║███████╗██║     ╚██████╔╝███████║
-# ╚══════╝╚══════╝   ╚═╝    ╚═════╝ ╚═╝         ╚═╝  ╚═╝╚══════╝╚═╝      ╚═════╝ ╚══════╝
+echo " ███████╗███████╗████████╗██╗   ██╗██████╗     ██████╗ ███████╗██████╗  ██████╗ ███████╗"
+echo " ██╔════╝██╔════╝╚══██╔══╝██║   ██║██╔══██╗    ██╔══██╗██╔════╝██╔══██╗██╔═══██╗██╔════╝"
+echo " ███████╗█████╗     ██║   ██║   ██║██████╔╝    ██████╔╝█████╗  ██████╔╝██║   ██║███████╗"
+echo " ╚════██║██╔══╝     ██║   ██║   ██║██╔═══╝     ██╔══██╗██╔══╝  ██╔═══╝ ██║   ██║╚════██║"
+echo " ███████║███████╗   ██║   ╚██████╔╝██║         ██║  ██║███████╗██║     ╚██████╔╝███████║"
+echo " ╚══════╝╚══════╝   ╚═╝    ╚═════╝ ╚═╝         ╚═╝  ╚═╝╚══════╝╚═╝      ╚═════╝ ╚══════╝"
                                                                                        
-#  █████╗ ███╗   ██╗██████╗     ██████╗ ██╗███╗   ██╗ █████╗ ██████╗ ██╗███████╗███████╗ 
-# ██╔══██╗████╗  ██║██╔══██╗    ██╔══██╗██║████╗  ██║██╔══██╗██╔══██╗██║██╔════╝██╔════╝ 
-# ███████║██╔██╗ ██║██║  ██║    ██████╔╝██║██╔██╗ ██║███████║██████╔╝██║█████╗  ███████╗ 
-# ██╔══██║██║╚██╗██║██║  ██║    ██╔══██╗██║██║╚██╗██║██╔══██║██╔══██╗██║██╔══╝  ╚════██║ 
-# ██║  ██║██║ ╚████║██████╔╝    ██████╔╝██║██║ ╚████║██║  ██║██║  ██║██║███████╗███████║ 
-# ╚═╝  ╚═╝╚═╝  ╚═══╝╚═════╝     ╚═════╝ ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚══════╝╚══════╝ 
+echo "  █████╗ ███╗   ██╗██████╗     ██████╗ ██╗███╗   ██╗ █████╗ ██████╗ ██╗███████╗███████╗ "
+echo " ██╔══██╗████╗  ██║██╔══██╗    ██╔══██╗██║████╗  ██║██╔══██╗██╔══██╗██║██╔════╝██╔════╝ "
+echo " ███████║██╔██╗ ██║██║  ██║    ██████╔╝██║██╔██╗ ██║███████║██████╔╝██║█████╗  ███████╗ "
+echo " ██╔══██║██║╚██╗██║██║  ██║    ██╔══██╗██║██║╚██╗██║██╔══██║██╔══██╗██║██╔══╝  ╚════██║ "
+echo " ██║  ██║██║ ╚████║██████╔╝    ██████╔╝██║██║ ╚████║██║  ██║██║  ██║██║███████╗███████║ "
+echo " ╚═╝  ╚═╝╚═╝  ╚═══╝╚═════╝     ╚═════╝ ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚══════╝╚══════╝ "
 
 repos() {
   export PATH=$PATH:/usr/local/go/bin
@@ -260,88 +268,150 @@ repos() {
   save_var AGGKITPROVERREPODIR ${REPODIR}/aggkit-prover
   save_var OPSUCCINCTDIR ${REPODIR}/op-succinct
 
-  git clone https://github.com/agglayer/agglayer-contracts/ $ZKEVM_CONTRACTS
-  git clone https://github.com/ethereum-optimism/optimism.git $OPMONOREPODIR
-  git clone https://github.com/ethereum-optimism/op-geth.git $OPGETHDIR
-  git clone https://github.com/agglayer/agglayer.git $AGGLAYERREPODIR
-  git clone https://github.com/agglayer/aggkit.git $AGGKITREPODIR
-  git clone https://github.com/0xPolygonHermez/zkevm-bridge-service.git $BRIDGEDIR
-  git clone https://github.com/0xPolygon/polygon-cli.git $POLYCLI
-  git clone https://github.com/agglayer/provers $AGGKITPROVERREPODIR
-  git clone https://github.com/agglayer/op-succinct.git $OPSUCCINCTDIR
+  if [ ! -d $ZKEVM_CONTRACTS ]; then
+    git clone https://github.com/agglayer/agglayer-contracts/ $ZKEVM_CONTRACTS
+  fi
 
+  # clone the monorepo for op-node, op-batcher, op-proposer and op-deployer if it does not exist
+  if [ ! -d $OPMONOREPODIR ]; then
+    git clone https://github.com/ethereum-optimism/optimism.git $OPMONOREPODIR
+  fi
 
-  # compile op-node
-  cd $OPMONOREPODIR/op-node
-  git checkout $OP_NODE_TAG
-  make
-  cp bin/op-node $RUNDIR/op-node
+  # compile op-node if the binary does not exist
+  if [ ! -f $RUNDIR/op-node ]; then
+    cd $OPMONOREPODIR/op-node
+    git fetch
+    git checkout $OP_NODE_TAG
+    make
+    cp bin/op-node $RUNDIR/op-node
+  fi
 
-  # compile op-batcher
-  cd $OPMONOREPODIR/op-batcher
-  git checkout $OP_BATCHER_TAGdeploy-cdkopgeth-pp.sh
+  # compile op-batcher if the binary does not exist
+  if [ ! -f $RUNDIR/op-batcher ]; then
+    cd $OPMONOREPODIR/op-batcher
+    gt fetch
+    git checkout $OP_BATCHER_TAG
+    make
+    cp bin/op-batcher $RUNDIR/op-batcher
+  fi
+
   # compile op-proposer
-  cd $OPMONOREPODIR/op-proposer
-  git checkout $OP_PROPOSER_TAG
-  make
-  cp bin/op-proposer $RUNDIR/op-proposer
+  if [ ! -d $OPMONOREPODIR/op-proposer ]; then
+    cd $OPMONOREPODIR/op-proposer
+    git fetch
+    git checkout $OP_PROPOSER_TAG
+    make
+    cp bin/op-proposer $RUNDIR/op-proposer
+  fi
+
+  if [ ! -d $OPGETHDIR ]; then
+    git clone https://github.com/ethereum-optimism/op-geth.git $OPGETHDIR
+  fi
 
   # compile op-geth
-  cd $OPGETHDIR
-  git checkout $OP_GETH_TAG
-  make
-  cp build/bin/geth $RUNDIR/op-geth
+  if [ ! -f $RUNDIR/op-geth ]; then
+    cd $OPGETHDIR
+    git fetch
+    git checkout $OP_GETH_TAG
+    make
+    cp build/bin/geth $RUNDIR/op-geth
+  fi
 
   # retrieve op-deployer binary from docker - we NEED PATCHED VERSION OVER another tag
-  docker pull $OP_DEPLOYER_TAG_DOCKER
-  docker run --detach --rm --name opdeployer_tmp $OP_DEPLOYER_TAG_DOCKER sleep 30
-  docker cp opdeployer_tmp:/usr/local/bin/op-deployer $RUNDIR/
+  if [ ! -f $RUNDIR/op-deployer ]; then
+    docker pull $OP_DEPLOYER_TAG_DOCKER
+    docker run --detach --rm --name opdeployer_tmp $OP_DEPLOYER_TAG_DOCKER sleep 30
+    docker cp opdeployer_tmp:/usr/local/bin/op-deployer $RUNDIR/
+  fi
+
+  if [ ! -d $AGGLAYERREPODIR ]; then
+    git clone https://github.com/agglayer/agglayer.git $AGGLAYERREPODIR
+  fi
 
   # agglayer
-  cd $AGGLAYERREPODIR
-  git checkout $AGGLAYER_TAG
-  # sed -i 's/bullseye/bookworm/g' Dockerfile
-  docker buildx build --build-arg BUILDPLATFORM=linux/amd64 --no-cache -t agglayer:local .
-  # get the binary from the docker we just built
-  docker run --detach --rm --name agglayer_tmp agglayer:local sleep 30
-  docker cp agglayer_tmp:/usr/local/bin/agglayer $RUNDIR/agglayer.${AGGLAYER_TAG}
+  if [ ! -f $RUNDIR/agglayer.${AGGLAYER_TAG} ]; then
+    cd $AGGLAYERREPODIR
+    git fetch
+    git checkout $AGGLAYER_TAG
+    # sed -i 's/bullseye/bookworm/g' Dockerfile
+    docker buildx build --build-arg BUILDPLATFORM=linux/amd64 --no-cache -t agglayer:local .
+    # get the binary from the docker we just built
+    docker run --detach --rm --name agglayer_tmp agglayer:local sleep 30
+    docker cp agglayer_tmp:/usr/local/bin/agglayer $RUNDIR/agglayer.${AGGLAYER_TAG}
+  fi
 
-  # aggkit
-  cd $AGGKITREPODIR
-  git checkout $AGGKIT_TAG
-  make build
-  cp ./target/aggkit $RUNDIR/aggkit.${AGGKIT_TAG}
+  if [ ! -d $AGGKITREPODIR ]; then
+    git clone https://github.com/agglayer/aggkit.git $AGGKITREPODIR
+  fi
 
-  # bridge
-  cd $BRIDGEDIR
-  git checkout $BRIDGE_TAG
-  make build
-  cp dist/zkevm-bridge $RUNDIR/bridge
+  # build if binary not there
+  if [ ! -f $RUNDIR/aggkit.${AGGKIT_TAG} ]; then
+    cd $AGGKITREPODIR
+    git fetch
+    git checkout $AGGKIT_TAG
+    make build
+    cp ./target/aggkit $RUNDIR/aggkit.${AGGKIT_TAG}
+  fi
 
-  # polycli
-  cd $POLYCLI
-  make build
-  cp out/polycli $RUNDIR/
+  if [ ! -d $BRIDGEDIR ]; then
+    git clone https://github.com/0xPolygonHermez/zkevm-bridge-service.git $BRIDGEDIR
+  fi
 
-  # op-succinct
-  docker pull $OP_SUCCINCT_TAG_DOCKER
-  # get just version of the tag, the work after :
-  save_var OP_SUCCINCT_TAG $(echo $OP_SUCCINCT_TAG_DOCKER | cut -d: -f2)
-  docker run --detach --rm --name opsuccinct_tmp $OP_SUCCINCT_TAG_DOCKER sleep 30
-  docker cp opsuccinct_tmp:/usr/local/bin/validity-proposer $RUNDIR/op-succinct.${OP_SUCCINCT_TAG}
+  # build bridge if not there
+  if [ ! -f $RUNDIR/bridge ]; then
+    cd $BRIDGEDIR
+    git fetch
+    git checkout $BRIDGE_TAG
+    make build
+    cp dist/zkevm-bridge $RUNDIR/bridge
+  fi
 
-  # aggkit prover
-  cd $AGGKITPROVERREPODIR
-  git checkout $AGGKITPROVER_TAG
-  sed -i 's/bullseye/bookworm/g' Dockerfile
-  docker buildx build --build-arg BUILDPLATFORM=linux/amd64 --no-cache -t aggkit-prover:local .
-  docker run --detach --rm --name aggkitprover_tmp aggkit-prover:local sleep 30
-  docker cp aggkitprover_tmp:/usr/local/bin/aggkit-prover $RUNDIR/aggkit-prover.${AGGKITPROVER_TAG}
+  if [ ! -d $POLYCLI ]; then
+    git clone https://github.com/0xPolygon/polygon-cli.git $POLYCLI
+  fi
 
-  # fetch-rollup-config
-  cd $OPSUCCINCTDIR
-  git checkout $SUCCINCT_TAG
-  cat > Dockerfile <<EOF
+  # build polycli if not there
+  if [ ! -f $RUNDIR/polycli ]; then
+    cd $POLYCLI
+    git fetch
+    make build
+    cp out/polycli $RUNDIR/
+  fi
+
+  # get op-succinct binary if not there
+  if [ ! -f $RUNDIR/op-succinct.${SUCCINCT_TAG} ]; then
+    docker pull $OP_SUCCINCT_TAG_DOCKER
+    # get just version of the tag, the work after :
+    save_var SUCCINCT_TAG $SUCCINCT_TAG
+    docker run --detach --rm --name opsuccinct_tmp $OP_SUCCINCT_TAG_DOCKER sleep 30
+    docker cp opsuccinct_tmp:/usr/local/bin/validity-proposer $RUNDIR/op-succinct.${SUCCINCT_TAG}
+  fi
+
+  if [ ! -d $AGGKITPROVERREPODIR ]; then
+    git clone https://github.com/agglayer/provers $AGGKITPROVERREPODIR
+  fi
+
+  # get aggkit prover binary if not there
+  if [ ! -f $RUNDIR/aggkit-prover.${AGGKITPROVER_TAG} ]; then
+    cd $AGGKITPROVERREPODIR
+    git fetch
+    git checkout $AGGKITPROVER_TAG
+    sed -i 's/bullseye/bookworm/g' Dockerfile
+    docker buildx build --build-arg BUILDPLATFORM=linux/amd64 --no-cache -t aggkit-prover:local .
+    docker run --detach --rm --name aggkitprover_tmp aggkit-prover:local sleep 30
+    docker cp aggkitprover_tmp:/usr/local/bin/aggkit-prover $RUNDIR/aggkit-prover.${AGGKITPROVER_TAG}
+  fi
+
+  if [ ! -d $OPSUCCINCTDIR ]; then
+    git clone https://github.com/agglayer/op-succinct.git $OPSUCCINCTDIR
+  fi
+
+  # GET fetch-rollup-config if not there
+  if [ ! -f $RUNDIR/fetch-rollup-config.${SUCCINCT_TAG} ]; then
+    cd $OPSUCCINCTDIR
+    git fetch
+    git checkout $SUCCINCT_TAG
+    cat > Dockerfile <<EOF
 FROM rust:slim-bookworm AS builder
 
 ARG OP_SUCCINCT_BRANCH
@@ -365,9 +435,10 @@ RUN git clone https://github.com/agglayer/op-succinct.git . \
 RUN cargo build --release \
     && cp target/release/fetch-rollup-config /usr/local/bin/
 EOF
-  docker build --build-arg OP_SUCCINCT_BRANCH=$SUCCINCT_TAG --file Dockerfile -t op-succinct:$SUCCINCT_TAG .
-  docker run --detach --rm --name opsuccinct_tmp op-succinct:$SUCCINCT_TAG sleep 30
-  docker cp opsuccinct_tmp:/usr/local/bin/fetch-rollup-config $RUNDIR/fetch-rollup-config.$SUCCINCT_TAG
+    docker build --build-arg OP_SUCCINCT_BRANCH=$SUCCINCT_TAG --file Dockerfile -t op-succinct:$SUCCINCT_TAG .
+    docker run --detach --rm --name opsuccinct_tmp op-succinct:$SUCCINCT_TAG sleep 30
+    docker cp opsuccinct_tmp:/usr/local/bin/fetch-rollup-config $RUNDIR/fetch-rollup-config.$SUCCINCT_TAG
+  fi
 
 }
 
@@ -375,18 +446,29 @@ EOF
 repos
 
 
-# ██████╗ ███████╗██████╗ ██╗      ██████╗ ██╗   ██╗     ██████╗ ██████╗ ███╗   ██╗████████╗██████╗  █████╗  ██████╗████████╗███████╗
-# ██╔══██╗██╔════╝██╔══██╗██║     ██╔═══██╗╚██╗ ██╔╝    ██╔════╝██╔═══██╗████╗  ██║╚══██╔══╝██╔══██╗██╔══██╗██╔════╝╚══██╔══╝██╔════╝
-# ██║  ██║█████╗  ██████╔╝██║     ██║   ██║ ╚████╔╝     ██║     ██║   ██║██╔██╗ ██║   ██║   ██████╔╝███████║██║        ██║   ███████╗
-# ██║  ██║██╔══╝  ██╔═══╝ ██║     ██║   ██║  ╚██╔╝      ██║     ██║   ██║██║╚██╗██║   ██║   ██╔══██╗██╔══██║██║        ██║   ╚════██║
-# ██████╔╝███████╗██║     ███████╗╚██████╔╝   ██║       ╚██████╗╚██████╔╝██║ ╚████║   ██║   ██║  ██║██║  ██║╚██████╗   ██║   ███████║
-# ╚═════╝ ╚══════╝╚═╝     ╚══════╝ ╚═════╝    ╚═╝        ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝   ╚═╝   ╚══════╝
+echo "███╗   ██╗ ██████╗ ██████╗ ███████╗    ███╗   ███╗ ██████╗ ██████╗ ██╗   ██╗██╗     ███████╗███████╗"
+echo "████╗  ██║██╔═══██╗██╔══██╗██╔════╝    ████╗ ████║██╔═══██╗██╔══██╗██║   ██║██║     ██╔════╝██╔════╝"
+echo "██╔██╗ ██║██║   ██║██║  ██║█████╗      ██╔████╔██║██║   ██║██║  ██║██║   ██║██║     █████╗  ███████╗"
+echo "██║╚██╗██║██║   ██║██║  ██║██╔══╝      ██║╚██╔╝██║██║   ██║██║  ██║██║   ██║██║     ██╔══╝  ╚════██║"
+echo "██║ ╚████║╚██████╔╝██████╔╝███████╗    ██║ ╚═╝ ██║╚██████╔╝██████╔╝╚██████╔╝███████╗███████╗███████║"
+echo "╚═╝  ╚═══╝ ╚═════╝ ╚═════╝ ╚══════╝    ╚═╝     ╚═╝ ╚═════╝ ╚═════╝  ╚═════╝ ╚══════╝╚══════╝╚══════╝"
  
 cd $ZKEVM_CONTRACTS
 git stash && git checkout $ZKEVM_CONTRACTS_TAG
-rm -fr .openzeppelin/ deployment/v2/deploy_ongoing.json deployment/v2/deploy_parameters.json deployment/v2/create_rollup_parameters.json
+rm -fr .openzeppelin/ deployment/v2/deploy_ongoing.json deployment/v2/deploy_parameters.json deployment/v2/create_rollup_parameters.json package-lock.json node_modules
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
 nvm use v20.19.0
 npm i
+
+
+echo " ██████╗ ███████╗██████╗ ██╗      ██████╗ ██╗   ██╗     ██████╗ ██████╗ ███╗   ██╗████████╗██████╗  █████╗  ██████╗████████╗███████╗"
+echo " ██╔══██╗██╔════╝██╔══██╗██║     ██╔═══██╗╚██╗ ██╔╝    ██╔════╝██╔═══██╗████╗  ██║╚══██╔══╝██╔══██╗██╔══██╗██╔════╝╚══██╔══╝██╔════╝"
+echo " ██║  ██║█████╗  ██████╔╝██║     ██║   ██║ ╚████╔╝     ██║     ██║   ██║██╔██╗ ██║   ██║   ██████╔╝███████║██║        ██║   ███████╗"
+echo " ██║  ██║██╔══╝  ██╔═══╝ ██║     ██║   ██║  ╚██╔╝      ██║     ██║   ██║██║╚██╗██║   ██║   ██╔══██╗██╔══██║██║        ██║   ╚════██║"
+echo " ██████╔╝███████╗██║     ███████╗╚██████╔╝   ██║       ╚██████╗╚██████╔╝██║ ╚████║   ██║   ██║  ██║██║  ██║╚██████╗   ██║   ███████║"
+echo " ╚═════╝ ╚══════╝╚═╝     ╚══════╝ ╚═════╝    ╚═╝        ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝   ╚═╝   ╚══════╝"
 
 save_var AGGLAYER_VKEY $($RUNDIR/agglayer.${AGGLAYER_TAG} vkey)
 save_var AGGLAYER_VKEYSELECTOR $($RUNDIR/agglayer.${AGGLAYER_TAG} vkey-selector)
@@ -506,12 +588,12 @@ cd $WORKDIR
 cp $DATA/$SOVEREIGN_GENESIS_FILE $DATA/zkevm_allocs.json
 
 
-# ██████╗ ███████╗██████╗ ██╗      ██████╗ ██╗   ██╗     ██████╗ ██████╗       ███████╗████████╗ █████╗  ██████╗██╗  ██╗
-# ██╔══██╗██╔════╝██╔══██╗██║     ██╔═══██╗╚██╗ ██╔╝    ██╔═══██╗██╔══██╗      ██╔════╝╚══██╔══╝██╔══██╗██╔════╝██║ ██╔╝
-# ██║  ██║█████╗  ██████╔╝██║     ██║   ██║ ╚████╔╝     ██║   ██║██████╔╝█████╗███████╗   ██║   ███████║██║     █████╔╝ 
-# ██║  ██║██╔══╝  ██╔═══╝ ██║     ██║   ██║  ╚██╔╝      ██║   ██║██╔═══╝ ╚════╝╚════██║   ██║   ██╔══██║██║     ██╔═██╗ 
-# ██████╔╝███████╗██║     ███████╗╚██████╔╝   ██║       ╚██████╔╝██║           ███████║   ██║   ██║  ██║╚██████╗██║  ██╗
-# ╚═════╝ ╚══════╝╚═╝     ╚══════╝ ╚═════╝    ╚═╝        ╚═════╝ ╚═╝           ╚══════╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝
+echo " ██████╗ ███████╗██████╗ ██╗      ██████╗ ██╗   ██╗     ██████╗ ██████╗       ███████╗████████╗ █████╗  ██████╗██╗  ██╗"
+echo " ██╔══██╗██╔════╝██╔══██╗██║     ██╔═══██╗╚██╗ ██╔╝    ██╔═══██╗██╔══██╗      ██╔════╝╚══██╔══╝██╔══██╗██╔════╝██║ ██╔╝"
+echo " ██║  ██║█████╗  ██████╔╝██║     ██║   ██║ ╚████╔╝     ██║   ██║██████╔╝█████╗███████╗   ██║   ███████║██║     █████╔╝ "
+echo " ██║  ██║██╔══╝  ██╔═══╝ ██║     ██║   ██║  ╚██╔╝      ██║   ██║██╔═══╝ ╚════╝╚════██║   ██║   ██╔══██║██║     ██╔═██╗ "
+echo " ██████╔╝███████╗██║     ███████╗╚██████╔╝   ██║       ╚██████╔╝██║           ███████║   ██║   ██║  ██║╚██████╗██║  ██╗"
+echo " ╚═════╝ ╚══════╝╚═╝     ╚══════╝ ╚═════╝    ╚═╝        ╚═════╝ ╚═╝           ╚══════╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝"
 
 cd $RUNDIR
 # Initialize network
@@ -648,12 +730,12 @@ tmux new-session -d -s "opbatcher"
 tmux send-keys -t "opbatcher" "$CMD" C-m
 
 
-# ██████╗ ██╗   ██╗███╗   ██╗     █████╗  ██████╗  ██████╗ ██╗      █████╗ ██╗   ██╗███████╗██████╗ 
-# ██╔══██╗██║   ██║████╗  ██║    ██╔══██╗██╔════╝ ██╔════╝ ██║     ██╔══██╗╚██╗ ██╔╝██╔════╝██╔══██╗
-# ██████╔╝██║   ██║██╔██╗ ██║    ███████║██║  ███╗██║  ███╗██║     ███████║ ╚████╔╝ █████╗  ██████╔╝
-# ██╔══██╗██║   ██║██║╚██╗██║    ██╔══██║██║   ██║██║   ██║██║     ██╔══██║  ╚██╔╝  ██╔══╝  ██╔══██╗
-# ██║  ██║╚██████╔╝██║ ╚████║    ██║  ██║╚██████╔╝╚██████╔╝███████╗██║  ██║   ██║   ███████╗██║  ██║
-# ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═══╝    ╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚══════╝╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝
+echo " ██████╗ ██╗   ██╗███╗   ██╗     █████╗  ██████╗  ██████╗ ██╗      █████╗ ██╗   ██╗███████╗██████╗ "
+echo " ██╔══██╗██║   ██║████╗  ██║    ██╔══██╗██╔════╝ ██╔════╝ ██║     ██╔══██╗╚██╗ ██╔╝██╔════╝██╔══██╗"
+echo " ██████╔╝██║   ██║██╔██╗ ██║    ███████║██║  ███╗██║  ███╗██║     ███████║ ╚████╔╝ █████╗  ██████╔╝"
+echo " ██╔══██╗██║   ██║██║╚██╗██║    ██╔══██║██║   ██║██║   ██║██║     ██╔══██║  ╚██╔╝  ██╔══╝  ██╔══██╗"
+echo " ██║  ██║╚██████╔╝██║ ╚████║    ██║  ██║╚██████╔╝╚██████╔╝███████╗██║  ██║   ██║   ███████╗██║  ██║"
+echo " ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═══╝    ╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚══════╝╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝"
 # run agglayer prover and agglayer
 
 mkdir -p ${DATA}/agglayer
@@ -792,12 +874,12 @@ tmux new-session -d -s "agglayer"
 tmux send-keys -t "agglayer" "$CMD" C-m
 
 
-# ██████╗ ██╗   ██╗███╗   ██╗     █████╗  ██████╗  ██████╗ ██╗  ██╗██╗████████╗
-# ██╔══██╗██║   ██║████╗  ██║    ██╔══██╗██╔════╝ ██╔════╝ ██║ ██╔╝██║╚══██╔══╝
-# ██████╔╝██║   ██║██╔██╗ ██║    ███████║██║  ███╗██║  ███╗█████╔╝ ██║   ██║   
-# ██╔══██╗██║   ██║██║╚██╗██║    ██╔══██║██║   ██║██║   ██║██╔═██╗ ██║   ██║   
-# ██║  ██║╚██████╔╝██║ ╚████║    ██║  ██║╚██████╔╝╚██████╔╝██║  ██╗██║   ██║   
-# ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═══╝    ╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚═╝   ╚═╝   
+echo " ██████╗ ██╗   ██╗███╗   ██╗     █████╗  ██████╗  ██████╗ ██╗  ██╗██╗████████╗"
+echo " ██╔══██╗██║   ██║████╗  ██║    ██╔══██╗██╔════╝ ██╔════╝ ██║ ██╔╝██║╚══██╔══╝"
+echo " ██████╔╝██║   ██║██╔██╗ ██║    ███████║██║  ███╗██║  ███╗█████╔╝ ██║   ██║   "
+echo " ██╔══██╗██║   ██║██║╚██╗██║    ██╔══██║██║   ██║██║   ██║██╔═██╗ ██║   ██║   "
+echo " ██║  ██║╚██████╔╝██║ ╚████║    ██║  ██║╚██████╔╝╚██████╔╝██║  ██╗██║   ██║   "
+echo " ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═══╝    ╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚═╝   ╚═╝   "
 cd $RUNDIR
 mkdir -p $DATA/aggkit/tmp
 
@@ -929,12 +1011,12 @@ tmux new-session -d -s "aggkit"
 tmux send-keys -t "aggkit" "$CMD" C-m
 
 
-# ██████╗ ██╗   ██╗███╗   ██╗    ██████╗ ██████╗ ██╗██████╗  ██████╗ ███████╗
-# ██╔══██╗██║   ██║████╗  ██║    ██╔══██╗██╔══██╗██║██╔══██╗██╔════╝ ██╔════╝
-# ██████╔╝██║   ██║██╔██╗ ██║    ██████╔╝██████╔╝██║██║  ██║██║  ███╗█████╗  
-# ██╔══██╗██║   ██║██║╚██╗██║    ██╔══██╗██╔══██╗██║██║  ██║██║   ██║██╔══╝  
-# ██║  ██║╚██████╔╝██║ ╚████║    ██████╔╝██║  ██║██║██████╔╝╚██████╔╝███████╗
-# ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═══╝    ╚═════╝ ╚═╝  ╚═╝╚═╝╚═════╝  ╚═════╝ ╚══════╝
+echo " ██████╗ ██╗   ██╗███╗   ██╗    ██████╗ ██████╗ ██╗██████╗  ██████╗ ███████╗"
+echo " ██╔══██╗██║   ██║████╗  ██║    ██╔══██╗██╔══██╗██║██╔══██╗██╔════╝ ██╔════╝"
+echo " ██████╔╝██║   ██║██╔██╗ ██║    ██████╔╝██████╔╝██║██║  ██║██║  ███╗█████╗  "
+echo " ██╔══██╗██║   ██║██║╚██╗██║    ██╔══██╗██╔══██╗██║██║  ██║██║   ██║██╔══╝  "
+echo " ██║  ██║╚██████╔╝██║ ╚████║    ██████╔╝██║  ██║██║██████╔╝╚██████╔╝███████╗"
+echo " ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═══╝    ╚═════╝ ╚═╝  ╚═╝╚═╝╚═════╝  ╚═════╝ ╚══════╝"
 
 mkdir $DATA/bridge
 save_var BRIDGE_USER sovereign_bridge_user
@@ -1035,26 +1117,26 @@ tmux send-keys -t "bridge" "$CMD" C-m
 
 
 
-# ██████╗  ██████╗ ███╗   ██╗███████╗██╗                                                                                       
-# ██╔══██╗██╔═══██╗████╗  ██║██╔════╝██║                                                                                       
-# ██║  ██║██║   ██║██╔██╗ ██║█████╗  ██║                                                                                       
-# ██║  ██║██║   ██║██║╚██╗██║██╔══╝  ╚═╝                                                                                       
-# ██████╔╝╚██████╔╝██║ ╚████║███████╗██╗                                                                                       
-# ╚═════╝  ╚═════╝ ╚═╝  ╚═══╝╚══════╝╚═╝                                                                                       
+echo " ██████╗  ██████╗ ███╗   ██╗███████╗██╗                                                                                       "
+echo " ██╔══██╗██╔═══██╗████╗  ██║██╔════╝██║                                                                                       "
+echo " ██║  ██║██║   ██║██╔██╗ ██║█████╗  ██║                                                                                       "
+echo " ██║  ██║██║   ██║██║╚██╗██║██╔══╝  ╚═╝                                                                                       "
+echo " ██████╔╝╚██████╔╝██║ ╚████║███████╗██╗                                                                                       "
+echo " ╚═════╝  ╚═════╝ ╚═╝  ╚═══╝╚══════╝╚═╝                                                                                       "
 
 
-# ████████╗███████╗███████╗████████╗██╗███╗   ██╗ ██████╗                                                                      
-# ╚══██╔══╝██╔════╝██╔════╝╚══██╔══╝██║████╗  ██║██╔════╝                                                                      
-#    ██║   █████╗  ███████╗   ██║   ██║██╔██╗ ██║██║  ███╗                                                                     
-#    ██║   ██╔══╝  ╚════██║   ██║   ██║██║╚██╗██║██║   ██║                                                                     
-#    ██║   ███████╗███████║   ██║   ██║██║ ╚████║╚██████╔╝                                                                     
-#    ╚═╝   ╚══════╝╚══════╝   ╚═╝   ╚═╝╚═╝  ╚═══╝ ╚═════╝                                                                                             
-# ██████╗ ███████╗██████╗  ██████╗ ███████╗██╗████████╗     █████╗ ███╗   ██╗██████╗      ██████╗██╗      █████╗ ██╗███╗   ███╗
-# ██╔══██╗██╔════╝██╔══██╗██╔═══██╗██╔════╝██║╚══██╔══╝    ██╔══██╗████╗  ██║██╔══██╗    ██╔════╝██║     ██╔══██╗██║████╗ ████║
-# ██║  ██║█████╗  ██████╔╝██║   ██║███████╗██║   ██║       ███████║██╔██╗ ██║██║  ██║    ██║     ██║     ███████║██║██╔████╔██║
-# ██║  ██║██╔══╝  ██╔═══╝ ██║   ██║╚════██║██║   ██║       ██╔══██║██║╚██╗██║██║  ██║    ██║     ██║     ██╔══██║██║██║╚██╔╝██║
-# ██████╔╝███████╗██║     ╚██████╔╝███████║██║   ██║       ██║  ██║██║ ╚████║██████╔╝    ╚██████╗███████╗██║  ██║██║██║ ╚═╝ ██║
-# ╚═════╝ ╚══════╝╚═╝      ╚═════╝ ╚══════╝╚═╝   ╚═╝       ╚═╝  ╚═╝╚═╝  ╚═══╝╚═════╝      ╚═════╝╚══════╝╚═╝  ╚═╝╚═╝╚═╝     ╚═╝
+echo " ████████╗███████╗███████╗████████╗██╗███╗   ██╗ ██████╗                                                                      "
+echo " ╚══██╔══╝██╔════╝██╔════╝╚══██╔══╝██║████╗  ██║██╔════╝                                                                      "
+echo "    ██║   █████╗  ███████╗   ██║   ██║██╔██╗ ██║██║  ███╗                                                                     "
+echo "    ██║   ██╔══╝  ╚════██║   ██║   ██║██║╚██╗██║██║   ██║                                                                     "
+echo "    ██║   ███████╗███████║   ██║   ██║██║ ╚████║╚██████╔╝                                                                     "
+echo "    ╚═╝   ╚══════╝╚══════╝   ╚═╝   ╚═╝╚═╝  ╚═══╝ ╚═════╝                                                                                             "
+echo " ██████╗ ███████╗██████╗  ██████╗ ███████╗██╗████████╗     █████╗ ███╗   ██╗██████╗      ██████╗██╗      █████╗ ██╗███╗   ███╗"
+echo " ██╔══██╗██╔════╝██╔══██╗██╔═══██╗██╔════╝██║╚══██╔══╝    ██╔══██╗████╗  ██║██╔══██╗    ██╔════╝██║     ██╔══██╗██║████╗ ████║"
+echo " ██║  ██║█████╗  ██████╔╝██║   ██║███████╗██║   ██║       ███████║██╔██╗ ██║██║  ██║    ██║     ██║     ███████║██║██╔████╔██║"
+echo " ██║  ██║██╔══╝  ██╔═══╝ ██║   ██║╚════██║██║   ██║       ██╔══██║██║╚██╗██║██║  ██║    ██║     ██║     ██╔══██║██║██║╚██╔╝██║"
+echo " ██████╔╝███████╗██║     ╚██████╔╝███████║██║   ██║       ██║  ██║██║ ╚████║██████╔╝    ╚██████╗███████╗██║  ██║██║██║ ╚═╝ ██║"
+echo " ╚═════╝ ╚══════╝╚═╝      ╚═════╝ ╚══════╝╚═╝   ╚═╝       ╚═╝  ╚═╝╚═╝  ╚═══╝╚═════╝      ╚═════╝╚══════╝╚═╝  ╚═╝╚═╝╚═╝     ╚═╝"
 
 l1_deposit_amount="0.01ether"
 l1_wei_deposit_amount=$(echo "$l1_deposit_amount" | sed 's/ether//g' | cast to-wei)
