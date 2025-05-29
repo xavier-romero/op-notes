@@ -553,6 +553,7 @@ cp deployment/v2/deploy_output.json $DATA/
 # create sovereign genesis
 save_var ROLLUPMANAGER $(jq -r .polygonRollupManagerAddress $DATA/deploy_output.json)
 save_var PPVKEY_VERIFIER $(jq -r .pessimisticVKeyRouteALGateway.verifier $DATA/deploy_output.json)
+save_var AGGLAYER_GW_ADDR $(jq -r .aggLayerGatewayAddress $DATA/deploy_output.json)
 
 # create-genesis-sovereign-params.json
 jq --arg ZKEVMADMIN "$ZKEVM_ADMIN" \
@@ -685,6 +686,8 @@ jq --arg L1_BLOCK_HASH "$L1_BLOCK_HASH" \
   ' $ROLLUP_JSON > ${ROLLUP_JSON}.out
 mv ${ROLLUP_JSON}.out $ROLLUP_JSON
 
+sleep 30
+
 # run op-node
 CMD="${RUNDIR}/op-node \
   --l2=http://localhost:8551 \
@@ -718,7 +721,7 @@ CMD="${RUNDIR}/op-batcher \
   --safe-abort-nonce-too-low-count=3 \
   --resubmission-timeout=30s \
   --rpc.addr=0.0.0.0 \
-  --rpc.port=8548 \
+  --rpc.port=3548 \
   --rpc.enable-admin \
   --max-channel-duration=25 \
   --l1-eth-rpc=$SEPOLIA_PROVIDER \
@@ -1092,10 +1095,10 @@ GenBlockNumber = "$DEPLOYBLOCKNUMBER"
 PolygonBridgeAddress = "$BRIDGE_ADDR"
 PolygonZkEVMGlobalExitRootAddress = "$GERMANAGER"
 PolygonRollupManagerAddress = "$ROLLUPMANAGER"
-PolygonZkEVMAddress = "$ROLLUP_ADDR"
-L2PolygonBridgeAddresses = ["$L2_BRIDGE_ADDR"]
+# PolygonZkEVMAddress = "$ROLLUP_ADDR"
 RequireSovereignChainSmcs = [true]
 L2PolygonZkEVMGlobalExitRootAddresses = ["$L2_GERMANAGER_ADDR"]
+L2PolygonBridgeAddresses = ["$L2_BRIDGE_ADDR"]
 
 [ClaimTxManager]
 FrequencyToMonitorTxs = "5s"

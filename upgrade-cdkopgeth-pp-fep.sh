@@ -4,8 +4,18 @@ CONTEXT_FILE=${WORKDIR}/vars.sh
 [ -f "$CONTEXT_FILE" ] && source "$CONTEXT_FILE"
 
 
-save_var L2_RPC http://localhost:8545
-save_var L2_NODE_RPC http://localhost:9545
+# save_var L2_RPC http://localhost:8545
+# save_var L2_NODE_RPC http://localhost:9545
+
+# check these vars are set, otherwise exit
+if [[ -z "$ROLLUPID" || -z "$SUFFIX" || -z "$L2_RPC" || -z "$L2_NODE_RPC" ]]; then
+    echo "Required variables are not set. Please set ROLLUPID, SUFFIX, L2_RPC, and L2_NODE_RPC."
+    exit 1
+fi
+
+
+nvm use v20.19.0
+
 
 # Reference doc from John:
 # https://github.com/agglayer/e2e/blob/main/scenarios/pp-to-fep-migration/run.sh
@@ -36,12 +46,16 @@ cp ${DATA}/genesis.json $ZKEVM_CONTRACTS/tools/addRollupType/
 
 MNEMONIC="$ZKEVM_ADMIN_MNEMONIC" SEPOLIA_PROVIDER=$SEPOLIA_PROVIDER npx hardhat run $ZKEVM_CONTRACTS/tools/addRollupType/addRollupType.ts --network sepolia 2>&1 | tee $DATA/07_add_rollup_type.out
 
+save_var ADD_ROLLUP_TYPE_OUTPUT_FILE $(basename $(find tools/addRollupType/ -name 'add_rollup_type_output*' -type f -print0 | xargs -0 ls -t | head -n 1))
+cp tools/addRollupType/${ADD_ROLLUP_TYPE_OUTPUT_FILE} $DATA/
+save_var FEP_ROLLUPTYPEID $(cat $DATA/$ADD_ROLLUP_TYPE_OUTPUT_FILE | jq -r '.rollupTypeID')
+
 # Get the current rollup type count and make sure that it make sense
-rollup_type_count=$(cast call --rpc-url $SEPOLIA_PROVIDER $ROLLUPMANAGER 'rollupTypeCount() external view returns (uint32)')
-if [[ $rollup_type_count -ne 2 ]]; then
-    printf "Expected a rollup type count of 2 but got %d\n" "$rollup_type_count"
-    exit 1
-fi
+# rollup_type_count=$(cast call --rpc-url $SEPOLIA_PROVIDER $ROLLUPMANAGER 'rollupTypeCount() external view returns (uint32)')
+# if [[ $rollup_type_count -ne 2 ]]; then
+#     printf "Expected a rollup type count of 2 but got %d\n" "$rollup_type_count"
+#     # exit 1
+# fi
 
 
 
@@ -55,13 +69,13 @@ save_var PG_OPS_USER op_succinct_user
 save_var PG_OPS_PASS op_succinct_password
 save_var PG_OPS_DB op_succinct_db
 
-docker stop ops_postgres
-docker rm ops_postgres
-docker run --name ops_postgres \
+docker stop ops_postgres_$SUFFIX
+docker rm ops_postgres_$SUFFIX
+docker run --name ops_postgres_$SUFFIX \
   -e POSTGRES_USER=$PG_OPS_USER \
   -e POSTGRES_PASSWORD=$PG_OPS_PASS \
   -e POSTGRES_DB=$PG_OPS_DB \
-  -p 5434:5432 \
+  -p $((SUFFIX+5434)):5432 \
   -d postgres:15
 
 
@@ -73,22 +87,22 @@ docker run --name ops_postgres \
 # ╚══════╝   ╚═╝    ╚═════╝ ╚═╝         ╚══════╝╚══════╝ ╚══▀▀═╝  ╚═════╝ ╚══════╝╚═╝  ╚═══╝ ╚═════╝╚═╝╚═╝  ╚═══╝ ╚═════╝ 
 
 # check that's null:
-while [[ $(cast rpc --rpc-url http://localhost:4444 interop_getLatestPendingCertificateHeader 1) != "null" ]]; do
+while [[ $(cast rpc --rpc-url http://localhost:4444 interop_getLatestPendingCertificateHeader $ROLLUPID) != "null" ]]; do
   sleep 2
 done
 
 # Save block for latst settled certificate
-TMP_VAR=$(cast rpc --rpc-url http://localhost:4444 interop_getLatestSettledCertificateHeader 1 | jq -r '.metadata'  | perl -e '$_=<>; s/^\s+|\s+$//g; s/^0x//; $_=pack("H*",$_); my ($v,$f,$o,$c)=unpack("C Q> L> L>",$_); printf "{\"v\":%d,\"f\":%d,\"o\":%d,\"c\":%d}\n", $v, $f, $o, $c' | jq '.f + .o')
-# next block from the block of latest certificate
-save_var L2_UPGRADE_BLOCK $((TMP_VAR+1))
+save_var L2_UPGRADE_BLOCK $(cast rpc --rpc-url http://localhost:4444 interop_getLatestSettledCertificateHeader $ROLLUPID | jq -r '.metadata'  | perl -e '$_=<>; s/^\s+|\s+$//g; s/^0x//; $_=pack("H*",$_); my ($v,$f,$o,$c)=unpack("C Q> L> L>",$_); printf "{\"v\":%d,\"f\":%d,\"o\":%d,\"c\":%d}\n", $v, $f, $o, $c' | jq '.f + .o')
+# # next block from the block of latest certificate
+# save_var L2_UPGRADE_BLOCK $((TMP_VAR+1))
 save_var L2_UPGRADE_BLOCK_OUTPUTROOT $(cast rpc --rpc-url "$L2_NODE_RPC" optimism_outputAtBlock $(printf "0x%x" $L2_UPGRADE_BLOCK) | jq -r .outputRoot)
 save_var L2_UPGRADE_BLOCK_TIMESTAMP $(cast block $L2_UPGRADE_BLOCK --json | jq -r .timestamp | cast to-dec)
 
 # stop sequencing through op-node
-save_var STOP_SEQUENCER_HASH $(cast rpc --rpc-url http://localhost:9545 admin_stopSequencer)
+save_var STOP_SEQUENCER_HASH $(cast rpc --rpc-url $L2_NODE_RPC admin_stopSequencer)
 # cast rpc --rpc-url http://localhost:9545 admin_startSequencer $STOP_SEQUENCER_HASH
 
-save_var L2_UPGRADE_BLOCK_REFERENCE $(cast bn)
+save_var L2_UPGRADE_BLOCK_REFERENCE $(cast bn --rpc-url $L2_RPC)
 
 
 # ███████╗████████╗ ██████╗ ██████╗      █████╗  ██████╗  ██████╗ ██╗  ██╗██╗████████╗
@@ -98,9 +112,10 @@ save_var L2_UPGRADE_BLOCK_REFERENCE $(cast bn)
 # ███████║   ██║   ╚██████╔╝██║         ██║  ██║╚██████╔╝╚██████╔╝██║  ██╗██║   ██║   
 # ╚══════╝   ╚═╝    ╚═════╝ ╚═╝         ╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚═╝   ╚═╝   
 # Stop AggKit and set mode to Aggchain
-tmux send-keys -t "aggkit" C-c
+tmux send-keys -t "aggkit_${SUFFIX}" C-c
 sed -i 's/Mode="PessimisticProof"/Mode="AggchainProof"/' $DATA/aggkit/aggkit-config.toml
-sed -i 's/# AggchainProofURL/AggchainProofURL/' $DATA/aggkit/aggkit-config.toml
+sed -i 's/# AggchainProofURL="localhost:4447"/AggchainProofURL="localhost:'$((SUFFIX+4447))'"/' $DATA/aggkit/aggkit-config.toml
+# sed -i 's/# AggchainProofURL/AggchainProofURL/' $DATA/aggkit/aggkit-config.toml
 
 
 # ███████╗███████╗████████╗ ██████╗██╗  ██╗    ██████╗  ██████╗ ██╗     ██╗     ██╗   ██╗██████╗      ██████╗ ██████╗ ███╗   ██╗███████╗██╗ ██████╗ 
@@ -110,28 +125,31 @@ sed -i 's/# AggchainProofURL/AggchainProofURL/' $DATA/aggkit/aggkit-config.toml
 # ██║     ███████╗   ██║   ╚██████╗██║  ██║    ██║  ██║╚██████╔╝███████╗███████╗╚██████╔╝██║         ╚██████╗╚██████╔╝██║ ╚████║██║     ██║╚██████╔╝
 # ╚═╝     ╚══════╝   ╚═╝    ╚═════╝╚═╝  ╚═╝    ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚══════╝ ╚═════╝ ╚═╝          ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝╚═╝     ╚═╝ ╚═════╝ 
 # run fetch-rollup-config
-cd $REPODIR/op-succinct
+
+cd $WORKDIR
+
 L1_RPC=$SEPOLIA_PROVIDER \
 L1_BEACON_RPC=$SEPOLIA_PROVIDER \
-L2_RPC=http://localhost:8545 \
-L2_NODE_RPC=http://localhost:9545 \
+L2_RPC=$L2_RPC \
+L2_NODE_RPC=$L2_NODE_RPC \
 OP_SUCCINCT_MOCK="false" \
-RUST_LOG=debug \
-RUST_BACKTRACE=1 \
 STARTING_BLOCK_NUMBER=$L2_UPGRADE_BLOCK \
 NETWORK_RPC_URL=https://rpc.production.succinct.xyz \
 AGG_PROOF_MODE=compressed \
 AGGLAYER="true" \
-$RUNDIR/fetch-rollup-config.$SUCCINCT_TAG
+$RUNDIR/fetch-rollup-config.$SUCCINCT_TAG --output-dir ${DATA}/
+
+cp ${REPODIR}/op-succinct/configs/${CHAINID}.json ${DATA}/
+
 # Output:
 # ${REPODIR}/op-succinct/configs/${CHAINID}.json
-# ${REPODIR}/op-succinct/contracts/opsuccinctl2ooconfig.json
+# ${DATA}/opsuccinctl2ooconfig.json
 
-save_var ROLLUP_CONFIG_HASH $(jq -r .rollupConfigHash ${REPODIR}/op-succinct/contracts/opsuccinctl2ooconfig.json)
-save_var AGGREGATION_VKEY $(jq -r .aggregationVkey ${REPODIR}/op-succinct/contracts/opsuccinctl2ooconfig.json)
-save_var RANGE_VKEY_COMMITMENT $(jq -r .rangeVkeyCommitment ${REPODIR}/op-succinct/contracts/opsuccinctl2ooconfig.json)
-save_var L2_BLOCKTIME $(jq -r .l2BlockTime ${REPODIR}/op-succinct/contracts/opsuccinctl2ooconfig.json)
-save_var SUBMISSION_INTERVAL $(jq -r .submissionInterval ${REPODIR}/op-succinct/contracts/opsuccinctl2ooconfig.json)
+save_var ROLLUP_CONFIG_HASH $(jq -r .rollupConfigHash ${DATA}/opsuccinctl2ooconfig.json)
+save_var AGGREGATION_VKEY $(jq -r .aggregationVkey ${DATA}/opsuccinctl2ooconfig.json)
+save_var RANGE_VKEY_COMMITMENT $(jq -r .rangeVkeyCommitment ${DATA}/opsuccinctl2ooconfig.json)
+save_var L2_BLOCKTIME $(jq -r .l2BlockTime ${DATA}/opsuccinctl2ooconfig.json)
+save_var SUBMISSION_INTERVAL $(jq -r .submissionInterval ${DATA}/opsuccinctl2ooconfig.json)
 
 
 
@@ -150,18 +168,22 @@ cat > ${DATA}/updateRollup.json <<EOF
     "type": "EOA",
     "polygonRollupManagerAddress": "$ROLLUPMANAGER",
     "deployerPvtKey": "$ZKEVM_ADMIN_KEY",
+    "timelockDelay": 0,
+    "maxFeePerGas": "",
+    "maxPriorityFeePerGas": "",
+    "multiplierGas": "",
     "rollups": [
         {
             "rollupAddress": "$ROLLUP_ADDR",
-            "newRollupTypeID": 2,
+            "newRollupTypeID": $FEP_ROLLUPTYPEID,
             "upgradeData": "$upgrade_data"
         }
     ]
 }
 EOF
+cp ${DATA}/updateRollup.json $ZKEVM_CONTRACTS/tools/updateRollup/
 
 cd $ZKEVM_CONTRACTS
-cp ${DATA}/updateRollup.json $ZKEVM_CONTRACTS/tools/updateRollup/
 
 # Execute the update rollup script
 MNEMONIC="$ZKEVM_ADMIN_MNEMONIC" SEPOLIA_PROVIDER=$SEPOLIA_PROVIDER npx hardhat run $ZKEVM_CONTRACTS/tools/updateRollup/updateRollup.ts --network sepolia 2>&1 | tee $DATA/08_update_rollup.out
@@ -193,7 +215,6 @@ cp $ZKEVM_CONTRACTS/tools/updateRollup/updateRollupOutput-*.json $DATA/
 # https://didactic-giggle-9pqo9jg.pages.github.io/aggregation-layer/v0.3.0/Diagrams/#update-v020-ecdsa-to-v030-fep
 
 
-save_var AGGLAYER_GW_ADDR $(jq -r .aggLayerGatewayAddress $DATA/deploy_output.json)
 save_var AGGKIT_VKEY $($RUNDIR/aggkit-prover.${AGGKITPROVER_TAG} vkey)
 save_var AGGKIT_VKEYSELECTOR $($RUNDIR/aggkit-prover.${AGGKITPROVER_TAG} vkey-selector)
 
@@ -214,10 +235,7 @@ jq \
    '.type = "EOA" |
     .trustedSequencer = $SEQUENCER |
     .aggchainParams.initParams.l2BlockTime = ($L2_BLOCKTIME | tonumber) |
-    .aggchainParams.initParams.rollupConfigHash = $ROLLUP_CONFIG_HASH |https://hackmd.io/48nKAyn-QceOXTxmb2byIg?view
-# https://didactic-giggle-9pqo9jg.pages.github.io/aggregation-layer/v0.3.0/FAQs/#3-vkeys-aggchain-fep
-# https://didactic-giggle-9pqo9jg.pages.github.io/aggregation-layer/v0.3.0/Diagrams/#update-v020-ecdsa-to-v030-fep
-
+    .aggchainParams.initParams.rollupConfigHash = $ROLLUP_CONFIG_HASH |
     .aggchainParams.initParams.startingOutputRoot = $L2_UPGRADE_BLOCK_OUTPUTROOT |
     .aggchainParams.initParams.startingBlockNumber = ($L2_UPGRADE_BLOCK | tonumber) |
     .aggchainParams.initParams.startingTimestamp = ($L2_UPGRADE_BLOCK_TIMESTAMP | tonumber) |
@@ -393,6 +411,8 @@ cast send \
 # ███████║╚██████╔╝╚██████╗╚██████╗██║██║ ╚████║╚██████╗   ██║       ██║     ██║  ██║╚██████╔╝██║     ╚██████╔╝███████║███████╗██║  ██║
 # ╚══════╝ ╚═════╝  ╚═════╝ ╚═════╝╚═╝╚═╝  ╚═══╝ ╚═════╝   ╚═╝       ╚═╝     ╚═╝  ╚═╝ ╚═════╝ ╚═╝      ╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═╝
 # Run the succinct proposer
+cd $RUNDIR
+
 CMD="L1_RPC=$SEPOLIA_PROVIDER \
   L1_BEACON_RPC=$SEPOLIA_PROVIDER \
   L2_RPC=$L2_RPC \
@@ -404,17 +424,19 @@ CMD="L1_RPC=$SEPOLIA_PROVIDER \
   L2OO_ADDRESS=$ROLLUP_ADDR \
   OP_SUCCINCT_MOCK=false \
   AGGLAYER=true \
-  GRPC_ADDRESS=0.0.0.0:12345 \
+  GRPC_ADDRESS=0.0.0.0:$((SUFFIX+12345)) \
   NETWORK_PRIVATE_KEY=$SP1_NETWORK_KEY \
   MAX_CONCURRENT_PROOF_REQUESTS=3 \
   MAX_CONCURRENT_WITNESS_GEN=3 \
   RANGE_PROOF_INTERVAL=800 \
-  DATABASE_URL=postgres://$PG_OPS_USER:$PG_OPS_PASS@localhost:5434/$PG_OPS_DB \
+  DATABASE_URL=postgres://$PG_OPS_USER:$PG_OPS_PASS@localhost:$((SUFFIX+5434))/$PG_OPS_DB \
   PROVER_ADDRESS=$AGGSENDER \
-  METRICS_PORT=3322 \
-  $RUNDIR/op-succinct.${OP_SUCCINCT_TAG} 2>&1 | tee $RUNDIR/op-succinct-proposer.log"
-tmux new-session -d -s succinctproposer
-tmux send-keys -t "succinctproposer" "$CMD" C-m
+  METRICS_PORT=$((SUFFIX+3322)) \
+  RUST_LOG=info \
+  RUST_BACKTRACE=1 \
+  $RUNDIR/op-succinct.${SUCCINCT_TAG} 2>&1 | tee $RUNDIR/op-succinct-proposer.log"
+tmux new-session -d -s succinctproposer_"$SUFFIX"
+tmux send-keys -t "succinctproposer_$SUFFIX" "$CMD" C-m
 
 
 
@@ -425,7 +447,7 @@ tmux send-keys -t "succinctproposer" "$CMD" C-m
 # ██║  ██║╚██████╔╝╚██████╔╝██║  ██╗██║   ██║       ██║     ██║  ██║╚██████╔╝ ╚████╔╝ ███████╗██║  ██║
 # ╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚═╝   ╚═╝       ╚═╝     ╚═╝  ╚═╝ ╚═════╝   ╚═══╝  ╚══════╝╚═╝  ╚═╝
 cat > ${DATA}/aggkit/aggkit-prover-config.toml <<EOF
-grpc-endpoint = "0.0.0.0:4447"
+grpc-endpoint = "0.0.0.0:$((SUFFIX+4447))"
 
 [log]
 level = "debug"
@@ -433,13 +455,13 @@ outputs = []
 format = "json"
 
 [telemetry]
-prometheus-addr = "0.0.0.0:19093"
+prometheus-addr = "0.0.0.0:$((SUFFIX+19093))"
 
-[shutdown]r
+[shutdown]
 runtime-timeout = "5s"
 
 [aggchain-proof-service.aggchain-proof-builder]
-network-id = 1
+network-id = $ROLLUPID
 
 [aggchain-proof-service.aggchain-proof-builder.primary-prover.network-prover]
 proving-timeout = "5h"
@@ -450,8 +472,8 @@ nanos = 0
 
 [aggchain-proof-service.aggchain-proof-builder.contracts]
 l1-rpc-endpoint = "$SEPOLIA_PROVIDER"
-l2-execution-layer-rpc-endpoint = "http://localhost:8545"
-l2-consensus-layer-rpc-endpoint = "http://localhost:9545"
+l2-execution-layer-rpc-endpoint = "$L2_RPC"
+l2-consensus-layer-rpc-endpoint = "$L2_NODE_RPC"
 polygon-rollup-manager = "$ROLLUPMANAGER"
 global-exit-root-manager-v2-sovereign-chain = "$L2_GERMANAGER_ADDR"
 
@@ -460,7 +482,7 @@ l1-rpc-endpoint = "$SEPOLIA_PROVIDER"
 mock = false
 
 [aggchain-proof-service.proposer-service.client]
-proposer-endpoint = "http://localhost:12345"
+proposer-endpoint = "http://localhost:$((SUFFIX+12345))"
 sp1-cluster-endpoint = "https://rpc.production.succinct.xyz"
 request-timeout = 18000
 proving-timeout = 18000
@@ -475,8 +497,8 @@ CMD="PROPOSER_NETWORK_PRIVATE_KEY=$SP1_NETWORK_KEY \
   RUST_LOG=info,aggkit_prover=debug,prover=debug,aggchain=debug \
   RUST_BACKTRACE=1 \
   $RUNDIR/aggkit-prover.${AGGKITPROVER_TAG} run --config-path $DATA/aggkit/aggkit-prover-config.toml 2>&1 | tee $RUNDIR/aggkit-prover.log"
-tmux new-session -d -s aggkitprover
-tmux send-keys -t "aggkitprover" "$CMD" C-m
+tmux new-session -d -s aggkitprover_"$SUFFIX"
+tmux send-keys -t "aggkitprover_$SUFFIX" "$CMD" C-m
 
 
 # ██████╗ ███████╗███████╗██╗   ██╗███╗   ███╗███████╗    ███████╗███████╗ ██████╗ ██╗   ██╗███████╗███╗   ██╗ ██████╗██╗███╗   ██╗ ██████╗ 
@@ -488,7 +510,7 @@ tmux send-keys -t "aggkitprover" "$CMD" C-m
 
 # THAT COULD BE DONE EARLIER. I'D EVEN SAY THAT WE COULD DO THE WHOLE PROCESS WITHOUT STOPPING SEQUENCER AT ALL.
 # start sequencer again
-cast rpc --rpc-url http://localhost:9545 admin_startSequencer $STOP_SEQUENCER_HASH
+cast rpc --rpc-url $L2_NODE_RPC admin_startSequencer $STOP_SEQUENCER_HASH
 
 
 
@@ -507,10 +529,10 @@ cast rpc --rpc-url http://localhost:9545 admin_startSequencer $STOP_SEQUENCER_HA
 
 
 CMD="$RUNDIR/aggkit.${AGGKIT_TAG} run --cfg=$DATA/aggkit/aggkit-config.toml --components=aggsender,aggoracle 2>&1 | tee $RUNDIR/aggkit.log"
-tmux send-keys -t "aggkit" "$CMD" C-m
+tmux send-keys -t aggkit_$SUFFIX "$CMD" C-m
 
 
-# docker exec -it ops_postgres  psql -U $PG_OPS_USER $PG_OPS_DB
+# docker exec -it ops_postgres_${SUFFIX}  psql -U $PG_OPS_USER $PG_OPS_DB
 # SQL: select id, status, req_type, mode, start_block, end_block, created_at, updated_at from requests;
 # Status:
         # match value {
