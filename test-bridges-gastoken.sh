@@ -22,7 +22,7 @@ N0_RPC=$SEPOLIA_PROVIDER
 N1_RPC=http://localhost:8545  # rollupid 1, pp
 N2_RPC=http://localhost:8547  # rollupid 2, pp
 N3_RPC=http://localhost:8548  # rollupid 3, fep
-N5_RPC=http://localhost:8548  # rollupid 5, pp custom gas token
+N5_RPC=http://localhost:8550  # rollupid 5, pp custom gas token
 
 GAS_TOKEN_ADDR=0xfA72Bea4184bBF0c567b09d457A5c6cB664254a7
 
@@ -30,9 +30,6 @@ INIT_FUNDED_KEY=$SEPOLIA_FUNDED_KEY
 BRIDGE_ADDR=$BRIDGE_ADDR
 L2FUNDED_KEY=$L2FUNDED_KEY
 
-
-
-# cast call --rpc-url http://localhost:8548 0xef5C08f2c24a585b68B30fD5449c6BE2C10bd0dC 'computeTokenProxyAddress(uint32,address)' 0 0xfA72Bea4184bBF0c567b09d457A5c6cB664254a7 | cast parse-bytes32-address
 
 # token_balance <token_addr> <holder_addr> <rpc_url> <native>
 token_balance() {
@@ -95,14 +92,15 @@ bridge_token() {
             --chain-id $(cast chain-id --rpc-url $source_rpc_url)
     else
         echo "Approving $source_gas_token_addr for $bridge_addr"
+        echo "debug: cast send --rpc-url $source_rpc_url $source_gas_token_addr \"approve(address,uint256)\" $bridge_addr $wei_deposit_amount --private-key $sender_key"
         cast send --rpc-url $source_rpc_url $source_gas_token_addr "approve(address,uint256)" \
             $bridge_addr $wei_deposit_amount \
             --private-key $sender_key
 
-        # Deposit through cast call
+        # Deposit through cast
         echo "Calling bridgeAsset on $bridge_addr"
         # bridgeAsset(uint32 destinationNetwork,address destinationAddress,uint256 amount,address token,bool forceUpdateGlobalExitRoot,bytes permitData)
-        cast call --rpc-url $source_rpc_url $bridge_addr "bridgeAsset(uint32,address,uint256,address,bool,bytes)" \
+        cast send --rpc-url $source_rpc_url $bridge_addr "bridgeAsset(uint32,address,uint256,address,bool,bytes)" \
             $dest_networkid $recipient_addr $wei_deposit_amount $source_gas_token_addr true "0x" \
             --private-key $sender_key
     fi
@@ -134,13 +132,61 @@ bridge_token() {
 
 
 #
-# 0 --> 1
+# 0 --> 1, sepolia to PP
 #
 test_wallet=$(cast wallet new --json)
 TEST_ADDR_1=$(echo $test_wallet | jq -r .[0].address)
 TEST_KEY_1=$(echo $test_wallet | jq -r .[0].private_key)
 
-dest_gas_token_addr=$(cast call --rpc-url $N1_RPC $BRIDGE_ADDR "computeTokenProxyAddress(uint32,address)" 0 $GAS_TOKEN_ADDR | cast parse-bytes32-address)
+dest_gas_token_addr_1=$(cast call --rpc-url $N1_RPC $BRIDGE_ADDR "computeTokenProxyAddress(uint32,address)" 0 $GAS_TOKEN_ADDR | cast parse-bytes32-address)
 
-bridge_token $INIT_FUNDED_KEY $TEST_ADDR_1 1 $BRIDGE_ADDR $N0_RPC $N1_RPC 0 1 $L2FUNDED_KEY $GAS_TOKEN_ADDR $dest_gas_token_addr 0 0
+bridge_token $INIT_FUNDED_KEY $TEST_ADDR_1 1 $BRIDGE_ADDR $N0_RPC $N1_RPC 0 1 $L2FUNDED_KEY $GAS_TOKEN_ADDR $dest_gas_token_addr_1 0 0
+
+
+#
+# 1 --> 5, PP to PP custom gas token
+#
+test_wallet=$(cast wallet new --json)
+TEST_ADDR_5=$(echo $test_wallet | jq -r .[0].address)
+TEST_KEY_5=$(echo $test_wallet | jq -r .[0].private_key)
+
+# test_addr_1 does not have native funds on network 1 (we just bridged a token), so we need to fund it as it will pay fees for bridging
+cast send --rpc-url $N1_RPC --value 0.01ether --private-key $L2FUNDED_KEY $TEST_ADDR_1
+
+bridge_token $TEST_KEY_1 $TEST_ADDR_5 1 $BRIDGE_ADDR $N1_RPC $N5_RPC 1 5 $L2FUNDED_KEY $dest_gas_token_addr_1 $GAS_TOKEN_ADDR 0 1
+
+
+
+
+
+
+# #
+# # 1 --> 3, PP to FEP
+# #
+# test_wallet=$(cast wallet new --json)
+# TEST_ADDR_3=$(echo $test_wallet | jq -r .[0].address)
+# TEST_KEY_3=$(echo $test_wallet | jq -r .[0].private_key)
+
+# dest_gas_token_addr_3=$(cast call --rpc-url $N3_RPC $BRIDGE_ADDR "computeTokenProxyAddress(uint32,address)" 1 $dest_gas_token_addr_1 | cast parse-bytes32-address)
+
+# # test_addr_1 does not have native funds on network 1 (we just bridged a token), so we need to fund it as it will pay fees for bridging
+# cast send --rpc-url $N1_RPC --value 0.01ether --private-key $L2FUNDED_KEY $TEST_ADDR_1
+
+# bridge_token $TEST_KEY_1 $TEST_ADDR_3 0.9 $BRIDGE_ADDR $N1_RPC $N3_RPC 1 3 $L2FUNDED_KEY $dest_gas_token_addr_1 $dest_gas_token_addr_3 0 0
+
+
+# #
+# # 3 --> 5, FEP to PP custom gas token
+# #
+# test_wallet=$(cast wallet new --json)
+# TEST_ADDR_5=$(echo $test_wallet | jq -r .[0].address)
+# TEST_KEY_5=$(echo $test_wallet | jq -r .[0].private_key)
+
+# # native token on network 5
+# dest_gas_token_addr_5=$(cast cast address-zero)
+
+# # test_addr_1 does not have native funds on network 1 (we just bridged a token), so we need to fund it as it will pay fees for bridging
+# cast send --rpc-url $N1_RPC --value 0.01ether --private-key $L2FUNDED_KEY $TEST_ADDR_1
+
+# bridge_token $TEST_KEY_1 $TEST_ADDR_3 0.9 $BRIDGE_ADDR $N1_RPC $N3_RPC 1 3 $L2FUNDED_KEY $dest_gas_token_addr_1 $dest_gas_token_addr_3 0 0
 

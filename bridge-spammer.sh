@@ -30,7 +30,6 @@ while true; do
             --rpc-url $L1_RPC \
             --private-key $L1_FUNDED_KEY \
             --chain-id $CHAINID
-        sleep 60
+        sleep 90
     done
-    # sleep 60
 done
