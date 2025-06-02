@@ -2,10 +2,13 @@
 SOURCE_CONTEXT=/home/opstack/upgrade/vars.sh
 [ -f "$SOURCE_CONTEXT" ] && source "$SOURCE_CONTEXT"
 
-SUFFIX=4
+SUFFIX=5
 WORKDIR=/home/opstack/upgrade${SUFFIX}
 NETWORKNAME=upgrade${SUFFIX}
 NEW_CHAINID=66778${SUFFIX}
+GAS_TOKEN_ADDR=0xfA72Bea4184bBF0c567b09d457A5c6cB664254a7
+# GAS_TOKEN_ADDR=0x0000000000000000000000000000000000000000
+
 
 echo " ██╗   ██╗ █████╗ ██████╗ ███████╗   ███████╗██╗  ██╗"
 echo " ██║   ██║██╔══██╗██╔══██╗██╔════╝   ██╔════╝██║  ██║"
@@ -95,6 +98,7 @@ save_var WORKDIR $WORKDIR
 save_var SUFFIX $SUFFIX
 save_var NETWORKNAME $NETWORKNAME
 save_var CHAINID $NEW_CHAINID
+save_var GAS_TOKEN_ADDR $GAS_TOKEN_ADDR
 
 save_var SCRIPTDIR ${WORKDIR}/scripts
 save_var RUNDIR ${WORKDIR}/run
@@ -195,6 +199,7 @@ jq --arg ZKEVMADMIN "$ZKEVM_ADMIN" \
    --arg ZKEVMDEPLOYER_KEY "$ZKEVM_ADMIN_KEY" \
    --arg AGGORACLE "$AGGORACLE" \
    --arg PPVKEY "$AGGLAYER_VKEY" \
+   --arg GAS_TOKEN_ADDR "$GAS_TOKEN_ADDR" \
    '
    .realVerifier = true |
    .programVKey = $PPVKEY |
@@ -207,7 +212,7 @@ jq --arg ZKEVMADMIN "$ZKEVM_ADMIN" \
    .chainID = $CHAINID |
    .deployerPvtKey = $ZKEVMDEPLOYER_KEY |
    .isVanillaClient = false |
-   .gasTokenAddress = "0xfA72Bea4184bBF0c567b09d457A5c6cB664254a7" |
+   .gasTokenAddress = $GAS_TOKEN_ADDR |
    .sovereignParams.bridgeManager = $ZKEVMADMIN |
    .sovereignParams.globalExitRootUpdater = $AGGORACLE |
    .sovereignParams.globalExitRootRemover = $AGGORACLE |
@@ -236,10 +241,12 @@ jq --arg ZKEVMADMIN "$ZKEVM_ADMIN" \
    --arg L2FUNDED "$L2FUNDED" \
    --arg ROLLUPMAN "$ROLLUPMANAGER" \
    --arg ROLLUPID $ROLLUPID \
+   --arg GAS_TOKEN_ADDR "$GAS_TOKEN_ADDR" \
    '
    .rollupManagerAddress = $ROLLUPMAN |
    .rollupID = $ROLLUPID |
    .chainID = $CHAINID |
+   .gasTokenAddress = $GAS_TOKEN_ADDR |
    .bridgeManager = $ZKEVMADMIN |
    .globalExitRootUpdater = $ZKEVMADMIN |
    .globalExitRootRemover = $ZKEVMADMIN |
@@ -413,6 +420,10 @@ tmux send-keys -t "opbatcher_${SUFFIX}" "$CMD" C-m
 
 save_var L2_RPC http://localhost:$((SUFFIX+8545))
 save_var L2_NODE_RPC http://localhost:$((SUFFIX+9545))
+
+
+# VALIDATE GASTOKEN IS SET IF THATS THE CASE:
+# cast call --rpc-url $L2_RPC  $L2_BRIDGE_ADDR 'gasTokenAddress()'
 
 
 echo " ██████╗ ██╗   ██╗███╗   ██╗     █████╗  ██████╗  ██████╗ ██╗  ██╗██╗████████╗"

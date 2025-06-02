@@ -1,3 +1,12 @@
+BLOCK_RANGE = 10000
+
+info = {
+    "bali": {
+        "rollup_manager_address": "0xE2EF6215aDc132Df6913C8DD16487aBF118d1764",
+        "rollup_manager_block": 4794475,
+    }
+}
+
 abis = {
     "PolygonRollupManager" : [
     {
