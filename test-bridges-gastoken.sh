@@ -4,19 +4,12 @@
 # 5 = pp custom gas token
 
 # GAS TOKEN BRIDGE TEST
-# 0 -> 1
-# 1 -> 3
-# 3 -> 5
-# 5 -> 2
-# 2 -> 0
+# 0 -> 3
+# 3 -> 2
+# 2 -> 5
+# 5 -> 1
+# 1 -> 0
 
-# ETH BRIDGE TEST
-# 0 -> 1
-# 0 -> 5
-# 1 -> 5
-# 5 -> 0
-# 5 -> 2
-# 2 -> 0
 
 N0_RPC=$SEPOLIA_PROVIDER
 N1_RPC=http://localhost:8545  # rollupid 1, pp
@@ -132,61 +125,39 @@ bridge_token() {
 
 
 #
-# 0 --> 1, sepolia to PP
+# 0 --> 3, sepolia to PP
 #
 test_wallet=$(cast wallet new --json)
-TEST_ADDR_1=$(echo $test_wallet | jq -r .[0].address)
-TEST_KEY_1=$(echo $test_wallet | jq -r .[0].private_key)
+TEST_ADDR_3=$(echo $test_wallet | jq -r .[0].address)
+TEST_KEY_3=$(echo $test_wallet | jq -r .[0].private_key)
 
-dest_gas_token_addr_1=$(cast call --rpc-url $N1_RPC $BRIDGE_ADDR "computeTokenProxyAddress(uint32,address)" 0 $GAS_TOKEN_ADDR | cast parse-bytes32-address)
+dest_gas_token_addr_3=$(cast call --rpc-url $N3_RPC $BRIDGE_ADDR "computeTokenProxyAddress(uint32,address)" 0 $GAS_TOKEN_ADDR | cast parse-bytes32-address)
 
-bridge_token $INIT_FUNDED_KEY $TEST_ADDR_1 1 $BRIDGE_ADDR $N0_RPC $N1_RPC 0 1 $L2FUNDED_KEY $GAS_TOKEN_ADDR $dest_gas_token_addr_1 0 0
+bridge_token $INIT_FUNDED_KEY $TEST_ADDR_1 1 $BRIDGE_ADDR $N0_RPC $N3_RPC 0 3 $L2FUNDED_KEY $GAS_TOKEN_ADDR $dest_gas_token_addr_3 0 0
+
+#
+# 3 --> 2, PP to PP
+#
+test_wallet=$(cast wallet new --json)
+TEST_ADDR_2=$(echo $test_wallet | jq -r .[0].address)
+TEST_KEY_2=$(echo $test_wallet | jq -r .[0].private_key)
+
+# test_addr_3 does not have native funds on network 3 (we just bridged a token), so we need to fund it as it will pay fees for bridging
+cast send --rpc-url $N3_RPC --value 0.01ether --private-key $L2FUNDED_KEY $TEST_ADDR_3
+
+bridge_token $TEST_KEY_3 $TEST_ADDR_2 1 $BRIDGE_ADDR $N3_RPC $N2_RPC 3 2 $L2FUNDED_KEY $dest_gas_token_addr_3 $dest_gas_token_addr_3 0 0
+
+
 
 
 #
-# 1 --> 5, PP to PP custom gas token
+# 2 --> 5, PP to PP custom gas token
 #
 test_wallet=$(cast wallet new --json)
 TEST_ADDR_5=$(echo $test_wallet | jq -r .[0].address)
 TEST_KEY_5=$(echo $test_wallet | jq -r .[0].private_key)
 
-# test_addr_1 does not have native funds on network 1 (we just bridged a token), so we need to fund it as it will pay fees for bridging
-cast send --rpc-url $N1_RPC --value 0.01ether --private-key $L2FUNDED_KEY $TEST_ADDR_1
+# test_addr_2 does not have native funds on network 2 (we just bridged a token), so we need to fund it as it will pay fees for bridging
+cast send --rpc-url $N2_RPC --value 0.01ether --private-key $L2FUNDED_KEY $TEST_ADDR_2
 
-bridge_token $TEST_KEY_1 $TEST_ADDR_5 1 $BRIDGE_ADDR $N1_RPC $N5_RPC 1 5 $L2FUNDED_KEY $dest_gas_token_addr_1 $GAS_TOKEN_ADDR 0 1
-
-
-
-
-
-
-# #
-# # 1 --> 3, PP to FEP
-# #
-# test_wallet=$(cast wallet new --json)
-# TEST_ADDR_3=$(echo $test_wallet | jq -r .[0].address)
-# TEST_KEY_3=$(echo $test_wallet | jq -r .[0].private_key)
-
-# dest_gas_token_addr_3=$(cast call --rpc-url $N3_RPC $BRIDGE_ADDR "computeTokenProxyAddress(uint32,address)" 1 $dest_gas_token_addr_1 | cast parse-bytes32-address)
-
-# # test_addr_1 does not have native funds on network 1 (we just bridged a token), so we need to fund it as it will pay fees for bridging
-# cast send --rpc-url $N1_RPC --value 0.01ether --private-key $L2FUNDED_KEY $TEST_ADDR_1
-
-# bridge_token $TEST_KEY_1 $TEST_ADDR_3 0.9 $BRIDGE_ADDR $N1_RPC $N3_RPC 1 3 $L2FUNDED_KEY $dest_gas_token_addr_1 $dest_gas_token_addr_3 0 0
-
-
-# #
-# # 3 --> 5, FEP to PP custom gas token
-# #
-# test_wallet=$(cast wallet new --json)
-# TEST_ADDR_5=$(echo $test_wallet | jq -r .[0].address)
-# TEST_KEY_5=$(echo $test_wallet | jq -r .[0].private_key)
-
-# # native token on network 5
-# dest_gas_token_addr_5=$(cast cast address-zero)
-
-# # test_addr_1 does not have native funds on network 1 (we just bridged a token), so we need to fund it as it will pay fees for bridging
-# cast send --rpc-url $N1_RPC --value 0.01ether --private-key $L2FUNDED_KEY $TEST_ADDR_1
-
-# bridge_token $TEST_KEY_1 $TEST_ADDR_3 0.9 $BRIDGE_ADDR $N1_RPC $N3_RPC 1 3 $L2FUNDED_KEY $dest_gas_token_addr_1 $dest_gas_token_addr_3 0 0
-
+bridge_token $TEST_KEY_2 $TEST_ADDR_5 1 $BRIDGE_ADDR $N2_RPC $N5_RPC 2 5 $L2FUNDED_KEY $dest_gas_token_addr_3 $GAS_TOKEN_ADDR 0 1
